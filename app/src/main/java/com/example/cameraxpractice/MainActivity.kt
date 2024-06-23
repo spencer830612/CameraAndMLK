@@ -28,6 +28,27 @@ class MainActivity : AppCompatActivity() {
     private var recording: Recording? = null
     
     private lateinit var cameraExecutor: ExecutorService
+    
+    private val activityResultLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions())
+        { permissions ->
+            // Handle Permission granted/rejected
+            var permissionGranted = true
+            permissions.entries.forEach {
+                if (it.key in REQUIRED_PERMISSIONS && !it.value)
+                    permissionGranted = false
+            }
+            //Loop through each permissions.entries and if any REQUIRED_PERMISSIONS are not granted, set permissionGranted to false.
+            //If permissions are not granted, present a toast to notify the user that the permissions were not granted.
+            if (!permissionGranted) {
+                Toast.makeText(baseContext,
+                    "Permission request denied",
+                    Toast.LENGTH_SHORT).show()
+            } else {
+                startCamera()
+            }
+        }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -59,7 +80,9 @@ class MainActivity : AppCompatActivity() {
     
     private fun startCamera() {}
     
-    private fun requestPermissions() {}
+    private fun requestPermissions() {
+        activityResultLauncher.launch(REQUIRED_PERMISSIONS)
+    }
     
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(
