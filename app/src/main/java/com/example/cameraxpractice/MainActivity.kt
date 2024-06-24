@@ -18,10 +18,13 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
+import androidx.core.content.PermissionChecker
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.cameraxpractice.databinding.ActivityMainBinding
@@ -144,7 +147,93 @@ class MainActivity : AppCompatActivity() {
         )
     }
     
-    private fun captureVideo() {}
+    // Implements VideoCapture use case, including start and stop capturing.
+    private fun captureVideo() {
+        // Check if the VideoCapture use case has been created: if not, do nothing.
+        val videoCapture = this.videoCapture ?: return
+        
+        // Disable the UI until the request action is completed by CameraX;
+        // it is re-enabled inside our registered VideoRecordListener in later steps.
+        viewBinding.videoCaptureButton.isEnabled = false
+        
+        // If there is an active recording in progress, stop it and release the current recording.
+        // We will be notified when the captured video file is ready to be used by our application.
+        val curRecording = recording
+        if (curRecording != null) {
+            // Stop the current recording session.
+            curRecording.stop()
+            recording = null
+            return
+        }
+        
+        // To start recording, we create a new recording session.
+        // First we create our intended MediaStore video content object,
+        // with system timestamp as the display name(so we could capture multiple videos).
+        val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US)
+            .format(System.currentTimeMillis())
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/CameraX-Video")
+            }
+        }
+        
+        // Create a MediaStoreOutputOptions.Builder with the external content option.
+        val mediaStoreOutputOptions = MediaStoreOutputOptions
+            .Builder(contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+            // Set the created video contentValues to the MediaStoreOutputOptions.Builder,
+            // and build our MediaStoreOutputOptions instance.
+            .setContentValues(contentValues)
+            .build()
+        
+        // Configure the output option to the Recorder of VideoCapture<Recorder> and enable audio recording:
+        recording = videoCapture.output
+            .prepareRecording(this, mediaStoreOutputOptions)
+            .apply {
+                // Enable Audio in this recording.
+                if (PermissionChecker.checkSelfPermission(this@MainActivity,
+                        Manifest.permission.RECORD_AUDIO) ==
+                    PermissionChecker.PERMISSION_GRANTED)
+                {
+                    withAudioEnabled()
+                }
+            }
+            
+            // Start this new recording, and register a lambda VideoRecordEvent listener.
+            .start(ContextCompat.getMainExecutor(this)) { recordEvent ->
+                when(recordEvent) {
+                    is VideoRecordEvent.Start -> {
+                        // When the request recording is started by the camera device,
+                        // toggle the "Start Capture" button text to say "Stop Capture".
+                        viewBinding.videoCaptureButton.apply {
+                            text = getString(R.string.stop_capture)
+                            isEnabled = true
+                        }
+                    }
+                    is VideoRecordEvent.Finalize -> {
+                        // When the active recording is complete, notify the user with a toast,
+                        // and toggle the "Stop Capture" button back to "Start Capture", and re-enable it:
+                        if (!recordEvent.hasError()) {
+                            val msg = "Video capture succeeded: " +
+                                    "${recordEvent.outputResults.outputUri}"
+                            Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT)
+                                .show()
+                            Log.d(TAG, msg)
+                        } else {
+                            recording?.close()
+                            recording = null
+                            Log.e(TAG, "Video capture ends with error: " +
+                                    "${recordEvent.error}")
+                        }
+                        viewBinding.videoCaptureButton.apply {
+                            text = getString(R.string.start_capture)
+                            isEnabled = true
+                        }
+                    }
+                }
+            }
+    }
     
     private fun startCamera() {
         // Create an instance of the ProcessCameraProvider.
