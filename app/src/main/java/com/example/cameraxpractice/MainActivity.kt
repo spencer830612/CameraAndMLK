@@ -12,8 +12,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.Recorder
@@ -23,10 +25,13 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.cameraxpractice.databinding.ActivityMainBinding
+import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+
+typealias LumaListener = (luma: Double) -> Unit
 
 class MainActivity : AppCompatActivity() {
     private lateinit var viewBinding: ActivityMainBinding
@@ -156,6 +161,13 @@ class MainActivity : AppCompatActivity() {
             // This is used to bind the lifecycle of our camera to the LifecycleOwner within the application's process.
             val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
             
+            val imageAnalyzer = ImageAnalysis.Builder()
+                .build()
+                .also {
+                    it.setAnalyzer(cameraExecutor, LuminosityAnalyzer { luma ->
+                        Log.d(TAG, "Average luminosity: $luma")
+                    })
+                }
             // Initialize our Preview object, call build on it,
             // get a surface provider from viewfinder, and then set it on the preview.
             val preview = Preview.Builder()
@@ -174,7 +186,7 @@ class MainActivity : AppCompatActivity() {
                 
                 // Bind use cases to camera
                 cameraProvider.bindToLifecycle(
-                    this, cameraSelector, preview , imageCapture
+                    this, cameraSelector, preview , imageCapture, imageAnalyzer
                 )
                 
             } catch (exc: Exception) {
@@ -212,5 +224,33 @@ class MainActivity : AppCompatActivity() {
                     add(Manifest.permission.WRITE_EXTERNAL_STORAGE) // import android.Manifest
                 }
             }.toTypedArray()
+    }
+    
+    // Add this analyzer in as an inner class in MainActivity.kt. The analyzer logs the average luminosity of the image.
+    // To create an analyzer, we override the analyze function in a class that implements the ImageAnalysis.Analyzer interface.
+    // With our class implementing the ImageAnalysis.Analyzer interface,
+    // all we need to do is instantiate an instance of LuminosityAnalyzer in the ImageAnalysis,
+    // similar to other use cases, and update the startCamera() function once again,
+    // before the call to CameraX.bindToLifecycle():
+    private class LuminosityAnalyzer(private val listener: LumaListener) : ImageAnalysis.Analyzer {
+        
+        private fun ByteBuffer.toByteArray(): ByteArray {
+            rewind()    // Rewind the buffer to zero
+            val data = ByteArray(remaining())
+            get(data)   // Copy the buffer into a byte array
+            return data // Return the byte array
+        }
+        
+        override fun analyze(image: ImageProxy) {
+            
+            val buffer = image.planes[0].buffer
+            val data = buffer.toByteArray()
+            val pixels = data.map { it.toInt() and 0xFF }
+            val luma = pixels.average()
+            
+            listener(luma)
+            
+            image.close()
+        }
     }
 }
