@@ -1,9 +1,11 @@
 package com.example.cameraxpractice
 
 import android.Manifest
+import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
@@ -11,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.Recorder
@@ -20,6 +23,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.example.cameraxpractice.databinding.ActivityMainBinding
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -83,7 +88,56 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor = Executors.newSingleThreadExecutor()
     }
     
-    private fun takePhoto() {}
+    private fun takePhoto() {
+        // First, get a reference to the ImageCapture use case. If the use case is null, exit out of the function.
+        // This will be null If we tap the photo button before image capture is set up. Without the return statement, the app would crash if it was null.
+        val imageCapture = imageCapture ?: return
+        
+        // Next, create a MediaStore content value to hold the image.
+        // Use a timestamp so the display name in MediaStore will be unique.
+        val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US)
+            .format(System.currentTimeMillis())
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CameraX-Image")
+            }
+        }
+        
+        // Create an OutputFileOptions object. This object is where we can specify things about how we want our output to be.
+        // We want the output saved in the MediaStore so other apps could display it, so add our MediaStore entry.
+        val outputOptions = ImageCapture.OutputFileOptions
+            .Builder(
+                contentResolver,
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                contentValues
+            )
+            .build()
+        
+        // Call takePicture() on the imageCapture object. Pass in outputOptions, the executor,
+        // and a callback for when the image is saved. You'll fill out the callback next.
+        // been taken
+        imageCapture.takePicture(
+            outputOptions,
+            ContextCompat.getMainExecutor(this),
+            object : ImageCapture.OnImageSavedCallback {
+                // In the case that the image capture fails or saving the image capture fails,
+                // add in an error case to log that it failed.
+                override fun onError(exc: ImageCaptureException) {
+                    Log.e(TAG, "Photo capture failed: ${exc.message}", exc)
+                }
+                
+                // If the capture doesn't fail, the photo was taken successfully!
+                // Save the photo to the file we created earlier, present a toast to let the user know it was successful, and print a log statement.
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    val msg = "Photo capture succeeded: ${output.savedUri}"
+                    Toast.makeText(baseContext, msg, Toast.LENGTH_SHORT).show()
+                    Log.d(TAG, msg)
+                }
+            }
+        )
+    }
     
     private fun captureVideo() {}
     
