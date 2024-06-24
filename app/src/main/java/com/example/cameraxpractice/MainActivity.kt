@@ -163,7 +163,7 @@ class MainActivity : AppCompatActivity() {
                 .also {
                     it.surfaceProvider = viewBinding.viewFinder.surfaceProvider
                 }
-            
+            imageCapture = ImageCapture.Builder().build()
             // Create a CameraSelector object and select DEFAULT_BACK_CAMERA.
             val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
             
@@ -174,7 +174,7 @@ class MainActivity : AppCompatActivity() {
                 
                 // Bind use cases to camera
                 cameraProvider.bindToLifecycle(
-                    this, cameraSelector, preview
+                    this, cameraSelector, preview , imageCapture
                 )
                 
             } catch (exc: Exception) {
